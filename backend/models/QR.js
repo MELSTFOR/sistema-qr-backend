@@ -7,11 +7,11 @@ import Category from "./Category.js";
 const QR = sequelize.define("QR", {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
   fileUrl: { // Ruta al PDF o imagen del QR
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT, // <-- cambiado a TEXT
     allowNull: true,
   },
   qrImageUrl: { // Imagen generada del código QR
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT, // <-- cambiado a TEXT
     allowNull: true,
   },
   estado: {
@@ -29,6 +29,7 @@ const QR = sequelize.define("QR", {
   tipoCarga: {
     type: DataTypes.ENUM("individual", "familia", "pdf"),
     allowNull: false,
+    defaultValue: "individual"
   },
 });
 
