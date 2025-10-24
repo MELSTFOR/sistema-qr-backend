@@ -104,6 +104,7 @@ export const createQRsFromExcel = async (req, res) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
 
     const results = { created: 0, failed: [] };
+    const createdQRs = []; // <-- acumula los QR creados
 
     for (let i = 0; i < rows.length; i++) {
       const raw = rows[i];
@@ -118,6 +119,7 @@ export const createQRsFromExcel = async (req, res) => {
       const origen = (raw["ORIGEN"] || raw["origen"] || "").toString().trim();
       const numeroCertificado = (raw["N° CERTIFICADO"] || raw["N°_CERTIFICADO"] || raw["N CERTIFICADO"] || raw["numeroCertificado"] || "").toString().trim();
       const organismo = (raw["ORGANISMO"] || raw["organismo"] || "").toString().trim();
+      const resolucion = (raw["RESOLUCION"] || raw["RESOLUCIÓN"] || raw["resolucion"] || "").toString().trim();
 
       // Validaciones mínimas
       if (!razonSocial || !cuil || (!sku && !tipo)) {
@@ -147,6 +149,7 @@ export const createQRsFromExcel = async (req, res) => {
             origen: origen || null,
             numeroCertificado: numeroCertificado || null,
             organismo: organismo || null,
+            resolucion: resolucion || "N/A",
           },
         });
 
@@ -177,7 +180,14 @@ export const createQRsFromExcel = async (req, res) => {
         };
 
         const qrImageUrl = await generateQRCode({ ...qrData, product }); // adapter: tu util puede requerir distintos campos
-        await QR.create({ ...qrData, qrImageUrl });
+        const newQR = await QR.create({ ...qrData, qrImageUrl });
+        // almacena el QR creado + datos relevantes para la respuesta
+        createdQRs.push({
+          qr: newQR.toJSON(),
+          qrData,
+          client: { id: client.id, razonSocial, cuil },
+          product: { id: product.id, nombre: product.nombre || tipo, sku: product.sku || sku, marca: product.marca || marca },
+        });
 
         results.created++;
       } catch (errRow) {
@@ -185,7 +195,14 @@ export const createQRsFromExcel = async (req, res) => {
       }
     }
 
-    return res.status(201).json({ message: "Procesamiento finalizado", results });
+    return res.status(201).json({
+      message: "Procesamiento finalizado",
+      results: {
+        created: results.created,
+        failed: results.failed,
+        qrs: createdQRs,
+      },
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: error.message });
