@@ -33,6 +33,23 @@ export const createQR = async (req, res) => {
       return res.status(404).json({ message: "Categoría no encontrada." });
     }
 
+    // Verificar si ya existe un QR con los mismos datos
+    const existingQR = await QR.findOne({
+      where: {
+        clientId: client.id,
+        categoryId,
+        fileUrl,
+        numeroExpediente,
+      },
+    });
+
+    if (existingQR) {
+      return res.status(409).json({
+        message: "Ya existe un QR generado con estos datos.",
+        qr: existingQR,
+      });
+    }
+
     // Generar el QR
     const qrData = {
       clientId: client.id,
@@ -87,13 +104,17 @@ export const getQRs = async (req, res) => {
 export const createQRsFromExcel = async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ message: "Token no proporcionado." });
+    if (!token)
+      return res.status(401).json({ message: "Token no proporcionado." });
 
     const secret = process.env.JWT_SECRET || "secret_dev";
     const decoded = jwt.verify(token, secret);
     const userId = decoded.id;
 
-    if (!req.file) return res.status(400).json({ message: "Archivo no provisto. Envia campo 'file'." });
+    if (!req.file)
+      return res
+        .status(400)
+        .json({ message: "Archivo no provisto. Envia campo 'file'." });
 
     // Opcional: categoryId puede venir en body (text) si quieres asignar la misma categoría a todos
     const { categoryId: categoryIdFromBody } = req.body;
@@ -110,20 +131,57 @@ export const createQRsFromExcel = async (req, res) => {
       const raw = rows[i];
 
       // Mapeo flexible de columnas (encabezados del excel mostrados)
-      const razonSocial = (raw["RAZON SOCIAL"] || raw["razonSocial"] || raw["razon social"] || raw["Razon Social"] || "").toString().trim();
+      const razonSocial = (
+        raw["RAZON SOCIAL"] ||
+        raw["razonSocial"] ||
+        raw["razon social"] ||
+        raw["Razon Social"] ||
+        ""
+      )
+        .toString()
+        .trim();
       const cuil = (raw["CUIT"] || raw["cuit"] || "").toString().trim();
-      const tipo = (raw["TIPO"] || raw["tipo"] || raw["IDENTIFICACION DEL PRODUCTO"] || raw["Identificacion del producto"] || "").toString().trim();
+      const tipo = (
+        raw["TIPO"] ||
+        raw["tipo"] ||
+        raw["IDENTIFICACION DEL PRODUCTO"] ||
+        raw["Identificacion del producto"] ||
+        ""
+      )
+        .toString()
+        .trim();
       const marca = (raw["MARCA"] || raw["marca"] || "").toString().trim();
       const modelo = (raw["MODELO"] || raw["modelo"] || "").toString().trim();
       const sku = (raw["SKU"] || raw["sku"] || "").toString().trim();
       const origen = (raw["ORIGEN"] || raw["origen"] || "").toString().trim();
-      const numeroCertificado = (raw["N° CERTIFICADO"] || raw["N°_CERTIFICADO"] || raw["N CERTIFICADO"] || raw["numeroCertificado"] || "").toString().trim();
-      const organismo = (raw["ORGANISMO"] || raw["organismo"] || "").toString().trim();
-      const resolucion = (raw["RESOLUCION"] || raw["RESOLUCIÓN"] || raw["resolucion"] || "").toString().trim();
+      const numeroCertificado = (
+        raw["N° CERTIFICADO"] ||
+        raw["N°_CERTIFICADO"] ||
+        raw["N CERTIFICADO"] ||
+        raw["numeroCertificado"] ||
+        ""
+      )
+        .toString()
+        .trim();
+      const organismo = (raw["ORGANISMO"] || raw["organismo"] || "")
+        .toString()
+        .trim();
+      const resolucion = (
+        raw["RESOLUCION"] ||
+        raw["RESOLUCIÓN"] ||
+        raw["resolucion"] ||
+        ""
+      )
+        .toString()
+        .trim();
 
       // Validaciones mínimas
       if (!razonSocial || !cuil || (!sku && !tipo)) {
-        results.failed.push({ row: i + 2, error: "Faltan campos obligatorios: RAZON SOCIAL, CUIT, (SKU o TIPO)." });
+        results.failed.push({
+          row: i + 2,
+          error:
+            "Faltan campos obligatorios: RAZON SOCIAL, CUIT, (SKU o TIPO).",
+        });
         continue;
       }
 
@@ -154,17 +212,29 @@ export const createQRsFromExcel = async (req, res) => {
         });
 
         // elegir categoryId: preferir el que venga en body, si no buscar por nombre en la planilla (columna CATEGORY) o dejar null -> error
-        let categoryId = categoryIdFromBody || raw["categoryId"] || raw["CATEGORIA"] || raw["Categoria"] || null;
+        let categoryId =
+          categoryIdFromBody ||
+          raw["categoryId"] ||
+          raw["CATEGORIA"] ||
+          raw["Categoria"] ||
+          null;
         if (categoryId) categoryId = Number(categoryId);
 
         if (!categoryId) {
-          results.failed.push({ row: i + 2, error: "Falta categoryId. Pasa categoryId en el body o añade columna categoryId en el excel." });
+          results.failed.push({
+            row: i + 2,
+            error:
+              "Falta categoryId. Pasa categoryId en el body o añade columna categoryId en el excel.",
+          });
           continue;
         }
 
         const category = await Category.findByPk(categoryId);
         if (!category) {
-          results.failed.push({ row: i + 2, error: `Categoría ${categoryId} no encontrada.` });
+          results.failed.push({
+            row: i + 2,
+            error: `Categoría ${categoryId} no encontrada.`,
+          });
           continue;
         }
 
@@ -186,12 +256,20 @@ export const createQRsFromExcel = async (req, res) => {
           qr: newQR.toJSON(),
           qrData,
           client: { id: client.id, razonSocial, cuil },
-          product: { id: product.id, nombre: product.nombre || tipo, sku: product.sku || sku, marca: product.marca || marca },
+          product: {
+            id: product.id,
+            nombre: product.nombre || tipo,
+            sku: product.sku || sku,
+            marca: product.marca || marca,
+          },
         });
 
         results.created++;
       } catch (errRow) {
-        results.failed.push({ row: i + 2, error: errRow.message || String(errRow) });
+        results.failed.push({
+          row: i + 2,
+          error: errRow.message || String(errRow),
+        });
       }
     }
 
