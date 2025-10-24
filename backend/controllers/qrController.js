@@ -116,7 +116,6 @@ export const createQRsFromExcel = async (req, res) => {
         .status(400)
         .json({ message: "Archivo no provisto. Envia campo 'file'." });
 
-    // Opcional: categoryId puede venir en body (text) si quieres asignar la misma categoría a todos
     const { categoryId: categoryIdFromBody } = req.body;
 
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -124,13 +123,12 @@ export const createQRsFromExcel = async (req, res) => {
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
 
-    const results = { created: 0, failed: [] };
-    const createdQRs = []; // <-- acumula los QR creados
+    const results = { created: 0, failed: [], duplicates: [] };
+    const createdQRs = [];
 
     for (let i = 0; i < rows.length; i++) {
       const raw = rows[i];
 
-      // Mapeo flexible de columnas (encabezados del excel mostrados)
       const razonSocial = (
         raw["RAZON SOCIAL"] ||
         raw["razonSocial"] ||
@@ -238,6 +236,23 @@ export const createQRsFromExcel = async (req, res) => {
           continue;
         }
 
+        const existingQR = await QR.findOne({
+          where: {
+            clientId: client.id,
+            categoryId,
+            numeroExpediente: numeroCertificado || null,
+          },
+        });
+
+        if (existingQR) {
+          results.duplicates.push({
+            row: i + 2,
+            message: "Ya existe un QR generado con estos datos.",
+            qr: existingQR,
+          });
+          continue;
+        }
+
         // preparar datos del QR (tipoCarga en este caso 'familia' porque proviene de una planilla de productos)
         const qrData = {
           clientId: client.id,
@@ -278,6 +293,7 @@ export const createQRsFromExcel = async (req, res) => {
       results: {
         created: results.created,
         failed: results.failed,
+        duplicates: results.duplicates,
         qrs: createdQRs,
       },
     });
